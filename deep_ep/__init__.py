@@ -86,10 +86,16 @@ init_jit()
 
 # Import APIs after initialization
 from .buffers.legacy import Buffer
-from .buffers.elastic import ElasticBuffer, EPHandle
+_legacy_only = bool(int(os.environ.get('EP_LEGACY_ONLY', '0')))
+if _legacy_only:
+    ElasticBuffer = None
+    EPHandle = None
+else:
+    from .buffers.elastic import ElasticBuffer, EPHandle
 # noinspection PyUnresolvedReferences
 from .utils.event import EventOverlap, EventHandle
-from .utils.envs import get_physical_domain_size, get_logical_domain_size
+if not _legacy_only:
+    from .utils.envs import get_physical_domain_size, get_logical_domain_size
 
 # noinspection PyUnresolvedReferences
 from deep_ep._C import Config, topk_idx_t
