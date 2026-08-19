@@ -6,6 +6,11 @@ namespace deep_ep::legacy {
 
 namespace internode_ll {
 
+// Kimi K3 routes each token to 16 experts. Keep one limit shared by the
+// low-latency dispatch and combine launchers so their collective contract
+// cannot drift.
+constexpr int kNumMaxTopK = 16;
+
 template <bool use_warp_sync = false>
 __forceinline__ __device__ bool is_rank_masked(int* mask_buffer_ptr, int rank) {
     if (mask_buffer_ptr == nullptr) {
@@ -490,7 +495,6 @@ void dispatch(void* packed_recv_x,
               int num_device_sms,
               cudaStream_t stream,
               int phases) {
-    constexpr int kNumMaxTopK = 11;
     const int num_warp_groups = ceil_div(num_experts, num_device_sms);
     const int num_warps_per_group = 32 / num_warp_groups;
     EP_HOST_ASSERT(num_warp_groups > 0 and num_warps_per_group > 0);
@@ -1163,7 +1167,6 @@ void combine(void* combined_x,
              cudaStream_t stream,
              int phases,
              bool zero_copy) {
-    constexpr int kNumMaxTopk = 11;
     const int num_warp_groups = ceil_div(num_experts, num_device_sms);
     const int num_warps_per_group = 32 / num_warp_groups;
     const int num_recv_per_sm = ceil_div(num_combined_tokens, num_device_sms);
@@ -1176,7 +1179,7 @@ void combine(void* combined_x,
     // Check workspace
     auto atomic_clean_flag = static_cast<int*>(workspace);
     EP_HOST_ASSERT(sizeof(int) <= LEGACY_NUM_WORKSPACE_BYTES);
-    EP_HOST_ASSERT(num_topk <= kNumMaxTopk);
+    EP_HOST_ASSERT(num_topk <= kNumMaxTopK);
 
     // Online cast cannot use zero-copy
     EP_HOST_ASSERT(not(zero_copy and use_logfmt));
@@ -1200,7 +1203,7 @@ void combine(void* combined_x,
 #define COMBINE_LAUNCH_CASE(hidden)                                                                                                \
     {                                                                                                                              \
         auto combine_func =                                                                                                        \
-            use_logfmt ? combine<true, hidden, kNumMaxTopk, kNumMaxUnrolls> : combine<false, hidden, kNumMaxTopk, kNumMaxUnrolls>; \
+            use_logfmt ? combine<true, hidden, kNumMaxTopK, kNumMaxUnrolls> : combine<false, hidden, kNumMaxTopK, kNumMaxUnrolls>; \
         SET_SHARED_MEMORY_FOR_TMA(combine_func);                                                                                   \
         LAUNCH_KERNEL(&cfg,                                                                                                        \
                       combine_func,                                                                                                \

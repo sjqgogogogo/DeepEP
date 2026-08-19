@@ -195,7 +195,7 @@ if __name__ == '__main__':
     print()
 
     setuptools.setup(
-        name='deep_ep',
+        name='tokenspeed-deepep',
         version=get_package_version(),
         packages=setuptools.find_packages(include=['deep_ep', 'deep_ep.*']),
         package_data={
