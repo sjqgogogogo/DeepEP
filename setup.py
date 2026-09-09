@@ -10,7 +10,13 @@ from setuptools.command.build_py import build_py
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
-persistent_env_names = ('EP_JIT_CACHE_DIR', 'EP_JIT_PRINT_COMPILER_COMMAND', 'EP_NUM_TOPK_IDX_BITS', 'EP_NCCL_ROOT_DIR')
+persistent_env_names = (
+    'EP_JIT_CACHE_DIR',
+    'EP_JIT_PRINT_COMPILER_COMMAND',
+    'EP_NUM_TOPK_IDX_BITS',
+    'EP_NCCL_ROOT_DIR',
+    'EP_LEGACY_ONLY',
+)
 
 # Load discover module without triggering `deep_ep.__init__`
 find_pkgs_spec = importlib.util.spec_from_file_location('find_pkgs', os.path.join(current_dir, 'deep_ep', 'utils', 'find_pkgs.py'))
@@ -93,6 +99,7 @@ if __name__ == '__main__':
     # TODO: make NVSHMEM and legacy optional
     nvshmem_root_dir = find_pkgs.find_nvshmem_root()
     nccl_root_dir = find_pkgs.find_nccl_root()
+    legacy_only = bool(int(os.getenv('EP_LEGACY_ONLY', '0')))
 
     # `128,2417` is used to suppress warnings of `fmt`
     cxx_flags = ['-O3', '-Wno-deprecated-declarations', '-Wno-unused-variable', '-Wno-sign-compare', '-Wno-reorder', '-Wno-attributes']
@@ -116,12 +123,22 @@ if __name__ == '__main__':
     nvshmem_host_lib = get_nvshmem_host_lib_name(nvshmem_root_dir)
     extra_link_args.extend([f'-l:{nvshmem_host_lib}', '-l:libnvshmem_device.a', f'-Wl,-rpath,{nvshmem_root_dir}/lib'])
 
-    # NCCL flags. Same story as NVSHMEM above — pip wheels ship
-    # ``libnccl.so.2`` only, so resolve the real name dynamically.
-    sources.extend(['csrc/kernels/backend/nccl.cu'])
+    # Common backend declarations still use base NCCL types, even in a
+    # legacy-only build. Keep the pinned headers visible, but omit the V2
+    # NCCL/Gin implementation and its link dependency below.
     include_dirs.extend([f'{nccl_root_dir}/include'])
-    nccl_lib = get_nccl_lib_name(nccl_root_dir)
-    extra_link_args.extend([f'-l:{nccl_lib}', f'-Wl,-rpath,{nccl_root_dir}/lib'])
+
+    # NCCL/Gin backs the V2 ElasticBuffer. Applications using only the legacy
+    # NVSHMEM Buffer can build a legacy-only wheel against an older,
+    # pinned NCCL installation without pulling in newer Gin-only types.
+    if legacy_only:
+        cxx_flags.append('-DEP_LEGACY_ONLY')
+        nvcc_flags.append('-DEP_LEGACY_ONLY')
+    else:
+        # Pip wheels ship ``libnccl.so.2`` only, so resolve the real name.
+        sources.extend(['csrc/kernels/backend/nccl.cu'])
+        nccl_lib = get_nccl_lib_name(nccl_root_dir)
+        extra_link_args.extend([f'-l:{nccl_lib}', f'-Wl,-rpath,{nccl_root_dir}/lib'])
 
     # CUDA driver sources
     sources.extend(['csrc/kernels/backend/cuda_driver.cu'])
@@ -181,6 +198,7 @@ if __name__ == '__main__':
     print(f' > Compilation flags: {extra_compile_args}')
     print(f' > Link flags: {extra_link_args}')
     print(f' > Arch list: {os.environ["TORCH_CUDA_ARCH_LIST"]}')
+    print(f' > Legacy only: {legacy_only}')
     print(f' > NVSHMEM path: {nvshmem_root_dir}')
     print(f' > NCCL path: {nccl_root_dir}')
     # Print persistent env variables

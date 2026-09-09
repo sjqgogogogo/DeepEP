@@ -1,10 +1,13 @@
+#include <pybind11/functional.h>
 #include <pybind11/pybind11.h>
 #include <torch/python.h>
 
 #include <deep_ep/common/compiled.cuh>
 
 #include "jit/api.hpp"
+#ifndef EP_LEGACY_ONLY
 #include "elastic/buffer.hpp"
+#endif
 #include "legacy/buffer.hpp"
 
 #ifndef TORCH_EXTENSION_NAME
@@ -34,6 +37,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     // Register legacy buffer APIs
     deep_ep::legacy::register_apis(m);
 
-    // Register elastic buffer (DeepEP V2) APIs
+    // Register elastic buffer (DeepEP V2) APIs when its NCCL/Gin backend was
+    // included in this build.
+#ifndef EP_LEGACY_ONLY
     deep_ep::elastic::register_apis(m);
+#endif
 }
