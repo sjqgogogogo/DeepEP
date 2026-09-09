@@ -100,4 +100,4 @@ if not _legacy_only:
 # noinspection PyUnresolvedReferences
 from deep_ep._C import Config, topk_idx_t
 
-__version__ = '2.1.0'
+__version__ = '2.1.1'
